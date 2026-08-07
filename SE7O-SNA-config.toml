@@ -1,0 +1,22 @@
+# SE7O-SNA Panel v3.0.0
+# Copy the values below into your platform's environment variables & start command.
+
+start_command = "python main.py"
+
+[env]
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "your-strong-password"
+SECRET_KEY = "generate-a-random-string"
+DB_PATH = "/data/panel.db"
+DOMAIN = "your-app-domain.example.com"
+PORT = "8080"
+
+# Telegram MTProto proxy. The FakeTLS secret is generated on first run and
+# persisted; you do not need to set it. After deploying, create a TCP Proxy in
+# your platform and point it at the internal port below (443).
+MTPROXY_ENABLED = "true"
+MTPROXY_PORT = "443"
+MTPROXY_FAKE_DOMAIN = "www.cloudflare.com"
+
+# Optional: use external PostgreSQL instead of SQLite.
+# DATABASE_URL = "postgresql://user:***@host:5432/dbname"
