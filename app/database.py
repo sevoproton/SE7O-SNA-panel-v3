@@ -35,11 +35,7 @@ async def init_db():
         _pg_pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
         async with _pg_pool.acquire() as conn:
             await conn.execute(SCHEMA_POSTGRES)
-            for col, coltype in LINKS_MIGRATIONS:
-                try:
-                    await conn.execute(f"ALTER TABLE links ADD COLUMN IF NOT EXISTS {col} {coltype}")
-                except Exception:
-                    pass
+            await conn.execute("ALTER TABLE links ADD COLUMN IF NOT EXISTS transport TEXT DEFAULT 'ws'")
     else:
         db_path = settings.db_path
         try:
@@ -53,17 +49,15 @@ async def init_db():
         _db_conn.row_factory = aiosqlite.Row
         await _db_conn.execute("PRAGMA journal_mode=WAL")
         await _db_conn.executescript(SCHEMA_SQLITE)
+        # CREATE TABLE IF NOT EXISTS doesn't add new columns to a table that
+        # already existed from a previous version of the schema (e.g. an
+        # older deployment's DB file that predates the "transport" column)
+        # -- ALTER TABLE is needed to migrate those in place.
+        try:
+            await _db_conn.execute("ALTER TABLE links ADD COLUMN transport TEXT DEFAULT 'ws'")
+        except Exception:
+            pass  # column already exists
         await _db_conn.commit()
-
-        cur = await _db_conn.execute("PRAGMA table_info(links)")
-        existing_cols = {row[1] for row in await cur.fetchall()}
-        for col, coltype in LINKS_MIGRATIONS:
-            if col not in existing_cols:
-                try:
-                    await _db_conn.execute(f"ALTER TABLE links ADD COLUMN {col} {coltype}")
-                    await _db_conn.commit()
-                except Exception:
-                    pass
 
 
 async def close_db():
@@ -116,13 +110,6 @@ LINKS_COLS = (
     "color TEXT DEFAULT '#39ff14', flag TEXT DEFAULT '', fragment TEXT DEFAULT '', "
     "transport TEXT DEFAULT 'ws'"
 )
-
-# Columns added after the initial release — applied via ALTER TABLE for
-# databases created before the column existed. (uid TEXT PRIMARY KEY, so a
-# fresh install already gets these via LINKS_COLS / CREATE TABLE.)
-LINKS_MIGRATIONS = [
-    ("transport", "TEXT DEFAULT 'ws'"),
-]
 
 SCHEMA_SQLITE = (
     "CREATE TABLE IF NOT EXISTS links (" + LINKS_COLS + ");"
