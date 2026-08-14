@@ -6,7 +6,7 @@ from app.security import require_auth
 from app import state
 from app.database import execute as db_exec, fetchall, fetchone
 from app.vless import generate_vless_link
-from app.models import LinkCreate
+from app.models import LinkCreate, VALID_TRANSPORTS, _normalize_transport
 from datetime import datetime, timezone, timedelta
 import uuid as uuid_lib
 import re
@@ -91,6 +91,7 @@ async def create_link(request: Request, _=Depends(require_auth)):
     color = body.get("color", "#39ff14")
     flag = body.get("flag", "")
     fragment = body.get("fragment", "")
+    transport = _normalize_transport(body.get("transport"))
 
     if flag:
         flag = flag.strip()[:2].upper()
@@ -102,24 +103,25 @@ async def create_link(request: Request, _=Depends(require_auth)):
         "max_connections": max_conn, "created_at": now, "active": 1,
         "expires_at": expires_at, "custom_path": custom_path, "custom_sni": custom_sni,
         "custom_host": custom_host, "custom_fp": custom_fp, "color": color,
-        "flag": flag, "fragment": fragment,
+        "flag": flag, "fragment": fragment, "transport": transport,
     }
 
     async with state.links_lock:
         state.links[uid] = link_data
 
     await db_exec(
-        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment) VALUES (?,?,?,?,?,1,?,?,?,?,?,?,?,?)",
-        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment) VALUES ($1,$2,$3,$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13)",
-        (uid, label, limit_bytes, max_conn, now, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment),
+        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport) VALUES (?,?,?,?,?,1,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport) VALUES ($1,$2,$3,$4,$5,TRUE,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+        (uid, label, limit_bytes, max_conn, now, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport),
     )
 
-    extra = {"custom_path": custom_path, "custom_sni": custom_sni, "custom_host": custom_host, "custom_fp": custom_fp, "fragment": fragment}
+    extra = {"custom_path": custom_path, "custom_sni": custom_sni, "custom_host": custom_host, "custom_fp": custom_fp, "fragment": fragment, "transport": transport}
     state.log_event("Inbound", f"Created inbound {label} ({uid})")
     return {
         "uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0,
         "max_connections": max_conn, "active": True, "created_at": now,
         "expires_at": expires_at, "color": color, "flag": flag, "fragment": fragment,
+        "transport": transport,
         "vless_link": generate_vless_link(uid, remark=f"SE7O-{label}", extra=extra),
     }
 
@@ -141,6 +143,7 @@ async def list_links(_=Depends(require_auth)):
             "custom_host": row.get("custom_host", ""),
             "custom_fp": row.get("custom_fp", "chrome"),
             "fragment": row.get("fragment", ""),
+            "transport": row.get("transport") or "ws",
         }
         result.append({
             "uuid": uid,
@@ -154,6 +157,7 @@ async def list_links(_=Depends(require_auth)):
             "color": row.get("color", "#39ff14"),
             "flag": row.get("flag", ""),
             "fragment": row.get("fragment", ""),
+            "transport": row.get("transport") or "ws",
             "current_connections": await count_connections(uid),
             "vless_link": generate_vless_link(uid, remark=f"SE7O-{row['label']}", extra=extra),
         })
@@ -223,6 +227,8 @@ async def update_link(uid: str, request: Request, _=Depends(require_auth)):
     if "flag" in body:
         fv = str(body["flag"]).strip()[:2].upper()
         updates["flag"] = fv if re.match(r"^[A-Z]{2}$", fv) else ""
+    if "transport" in body:
+        updates["transport"] = _normalize_transport(body.get("transport"))
 
     if updates:
         async with state.links_lock:
@@ -331,6 +337,7 @@ async def import_links(request: Request, _=Depends(require_auth)):
         flag = str(item.get("flag", "")).strip()[:2].upper()
         if not re.match(r"^[A-Z]{2}$", flag):
             flag = ""
+        transport = _normalize_transport(item.get("transport"))
 
         async with state.links_lock:
             if uid_input in state.links:
@@ -342,12 +349,13 @@ async def import_links(request: Request, _=Depends(require_auth)):
                 "custom_path": custom_path, "custom_sni": custom_sni,
                 "custom_host": custom_host, "custom_fp": custom_fp,
                 "color": color, "flag": flag, "fragment": fragment,
+                "transport": transport,
             }
         await db_exec(
-            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
+            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO links (uid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)",
             (uid_input, label, limit_bytes, used_bytes, max_conn, created_at, _active_for_db(active),
-             expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment),
+             expires_at, custom_path, custom_sni, custom_host, custom_fp, color, flag, fragment, transport),
         )
         imported += 1
 

@@ -7,6 +7,13 @@ from typing import Optional
 import re
 import uuid as uuid_lib
 
+VALID_TRANSPORTS = ("ws", "xhttp", "tcp")
+
+
+def _normalize_transport(v):
+    v = (v or "ws").strip().lower()
+    return v if v in VALID_TRANSPORTS else "ws"
+
 
 class LinkCreate(BaseModel):
     label: str = Field(default="This Server is Free", max_length=60)
@@ -22,6 +29,12 @@ class LinkCreate(BaseModel):
     color: str = "#39ff14"
     flag: str = ""
     fragment: str = ""
+    transport: str = "ws"
+
+    @field_validator("transport")
+    @classmethod
+    def validate_transport_create(cls, v: str) -> str:
+        return _normalize_transport(v)
 
     @field_validator("label")
     @classmethod
@@ -67,6 +80,12 @@ class LinkUpdate(BaseModel):
     color: Optional[str] = None
     flag: Optional[str] = None
     fragment: Optional[str] = None
+    transport: Optional[str] = None
+
+    @field_validator("transport")
+    @classmethod
+    def validate_transport_update(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_transport(v) if v is not None else None
 
 
 class AddressCreate(BaseModel):
