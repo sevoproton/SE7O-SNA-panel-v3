@@ -82,3 +82,30 @@ async def public_settings():
         "SELECT value FROM settings WHERE key = 'footer_text'",
     )
     return {"footer_text": row["value"] if row else ""}
+
+
+@router.post("/api/telegram/test")
+async def test_telegram(request: Request, _=Depends(require_auth)):
+    """
+    Sends the Telegram test message from the SERVER, not the browser.
+    The panel's old Test button called api.telegram.org directly from
+    client-side JS, which the browser blocks as a cross-origin request
+    (Telegram's API doesn't answer the CORS preflight) -- so the button
+    always failed silently with a generic "Error" toast no matter how
+    correct the token/chat ID were. Routing it through the backend avoids
+    CORS entirely and returns Telegram's actual error message on failure.
+    """
+    from app.services.telegram import send_test_message
+
+    body = await request.json()
+    token = str(body.get("tg_bot_token", "")).strip()
+    chat_id = str(body.get("tg_chat_id", "")).strip()
+    lang = str(body.get("lang", "en")).strip() or "en"
+
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="tg_bot_token and tg_chat_id are required")
+
+    ok, err = await send_test_message(token, chat_id, lang)
+    if not ok:
+        raise HTTPException(status_code=502, detail=err)
+    return {"ok": True}
