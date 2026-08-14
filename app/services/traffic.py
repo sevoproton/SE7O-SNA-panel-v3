@@ -6,7 +6,7 @@ Syncs per-link usage periodically.
 import asyncio
 from datetime import datetime, timezone, timedelta
 from app import state
-from app.database import execute as db_exec, DB_BACKEND
+from app.database import execute as db_exec
 
 
 async def add_to_buffer(hour: str, day: str, size: int):
@@ -29,22 +29,17 @@ async def flush_loop():
                 state.traffic_buffer["hourly"].clear()
                 state.traffic_buffer["daily"].clear()
 
-            # NOTE: sqlite's "?" placeholders bind positionally (each "?" needs
-            # its own value) while postgres lets us reuse "$2" twice for one
-            # value, so the two backends need differently-shaped param tuples.
             for hour, bytes_val in hourly.items():
-                params = (hour, bytes_val, bytes_val) if DB_BACKEND != "postgresql" else (hour, bytes_val)
                 await db_exec(
                     "INSERT INTO hourly_traffic (hour, bytes) VALUES (?,?) ON CONFLICT(hour) DO UPDATE SET bytes = bytes + ?",
                     "INSERT INTO hourly_traffic (hour, bytes) VALUES ($1,$2) ON CONFLICT (hour) DO UPDATE SET bytes = hourly_traffic.bytes + $2",
-                    params,
+                    (hour, bytes_val, bytes_val),
                 )
             for day, bytes_val in daily.items():
-                params = (day, bytes_val, bytes_val) if DB_BACKEND != "postgresql" else (day, bytes_val)
                 await db_exec(
                     "INSERT INTO daily_traffic (day, bytes) VALUES (?,?) ON CONFLICT(day) DO UPDATE SET bytes = bytes + ?",
                     "INSERT INTO daily_traffic (day, bytes) VALUES ($1,$2) ON CONFLICT (day) DO UPDATE SET bytes = daily_traffic.bytes + $2",
-                    params,
+                    (day, bytes_val, bytes_val),
                 )
         except Exception as e:
             pass

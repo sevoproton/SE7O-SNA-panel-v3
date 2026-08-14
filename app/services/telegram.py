@@ -53,64 +53,11 @@ async def _is_notify_enabled():
     return row and row["value"] == "1"
 
 
-async def _get_events_filter():
-    row = await fetchone(
-        "SELECT value FROM settings WHERE key='telegram_events'",
-        "SELECT value FROM settings WHERE key='telegram_events'",
-    )
-    raw = (row["value"] if row and row["value"] else "").strip()
-    if not raw:
-        # Nothing explicitly selected yet (fresh install) -> don't silently
-        # drop every event; treat "unset" as "all enabled" so the master
-        # telegram_notify_enabled switch is the only thing that has to be
-        # turned on to start getting messages.
-        return None
-    return {e.strip() for e in raw.split(",") if e.strip()}
-
-
-async def _send(token: str, chat_id: str, text: str, parse_mode: str | None = None, timeout: float = 5.0):
-    """Send one Telegram message and report success/failure with the
-    real reason instead of swallowing it. Every caller logs failures to
-    state.error_logs so they show up in the panel's Logs tab."""
-    payload = {"chat_id": chat_id, "text": text}
-    if parse_mode:
-        payload["parse_mode"] = parse_mode
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(
-                "https://api.telegram.org/bot" + token + "/sendMessage",
-                json=payload,
-            )
-        if resp.status_code == 200:
-            return True, ""
-        try:
-            detail = resp.json().get("description", resp.text)
-        except Exception:
-            detail = resp.text
-        return False, f"Telegram API {resp.status_code}: {detail}"
-    except httpx.TimeoutException:
-        return False, "Timed out contacting api.telegram.org"
-    except Exception as e:
-        return False, f"{type(e).__name__}: {e}"
-
-
-async def send_test_message(token: str, chat_id: str, lang: str = "en"):
-    """Used by the panel's Test button (server-side, so it isn't blocked by
-    the browser's CORS policy the way a direct fetch() from the frontend
-    to api.telegram.org would be)."""
-    msg = "✅ SE7O-SNA متصل شد" if lang == "fa" else "✅ SE7O-SNA is connected"
-    return await _send(token, chat_id, msg)
-
-
 async def notify_login(ip, ua):
     if not await _is_notify_enabled():
         return
-    events = await _get_events_filter()
-    if events is not None and "login" not in events:
-        return
     config = await _get_tg_config()
     if not config:
-        state.log_event("Warning", "Telegram login notification skipped: bot token or chat ID not set")
         return
     token, chat_id = config
     lang = await _get_lang()
@@ -126,20 +73,21 @@ async def notify_login(ip, ua):
     msg = msg.replace("{ip}", ip).replace("{ua}", ua).replace("{time}", now_str)
     msg += '\n\n<a href="https://' + settings.domain + '/panel">Open SE7O-SNA Panel</a>'
 
-    ok, err = await _send(token, chat_id, msg, parse_mode="HTML")
-    if not ok:
-        state.log_event("Error", f"Telegram login notification failed: {err}")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                "https://api.telegram.org/bot" + token + "/sendMessage",
+                json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
+            )
+    except Exception:
+        pass
 
 
 async def notify_event(event, label, uid):
     if not await _is_notify_enabled():
         return
-    events = await _get_events_filter()
-    if events is not None and event not in events:
-        return
     config = await _get_tg_config()
     if not config:
-        state.log_event("Warning", f"Telegram event notification ({event}) skipped: bot token or chat ID not set")
         return
     token, chat_id = config
     lang = await _get_lang()
@@ -154,9 +102,14 @@ async def notify_event(event, label, uid):
     msg = msg.replace("{label}", label).replace("{uid}", uid)
     msg += '\n\n<a href="https://' + settings.domain + '/panel">Open SE7O-SNA Panel</a>'
 
-    ok, err = await _send(token, chat_id, msg, parse_mode="HTML")
-    if not ok:
-        state.log_event("Error", f"Telegram event notification ({event}) failed: {err}")
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                "https://api.telegram.org/bot" + token + "/sendMessage",
+                json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
+            )
+    except Exception:
+        pass
 
 
 async def report_loop():
@@ -203,15 +156,9 @@ async def report_loop():
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
+                await client.post(
                     "https://api.telegram.org/bot" + token + "/sendMessage",
                     json={"chat_id": chat_id, "text": msg},
                 )
-            if resp.status_code != 200:
-                try:
-                    detail = resp.json().get("description", resp.text)
-                except Exception:
-                    detail = resp.text
-                state.log_event("Error", f"Telegram periodic report failed: {resp.status_code} {detail}")
-        except Exception as e:
-            state.log_event("Error", f"Telegram periodic report failed: {type(e).__name__}: {e}")
+        except Exception:
+            pass

@@ -40,15 +40,6 @@ BIND_PORT_KEY = "mtproxy_bind_port"
 PUBLIC_HOST_KEY = "mtproxy_public_host"
 PUBLIC_PORT_KEY = "mtproxy_public_port"
 
-# DB setting keys (above) are prefixed with "mtproxy_"; the in-memory
-# state.mtproxy_config dict uses short keys. This maps one to the other so
-# runtime updates (_set_str) actually land where the getters read from.
-_DB_KEY_TO_STATE_KEY = {
-    BIND_PORT_KEY: "bind_port",
-    PUBLIC_HOST_KEY: "public_host",
-    PUBLIC_PORT_KEY: "public_port",
-}
-
 # Process handle and last known status.
 _process: Optional[asyncio.subprocess.Process] = None
 _task: Optional[asyncio.Task] = None
@@ -106,8 +97,7 @@ async def _get_str(key: str, default: str = "") -> str:
 
 
 async def _set_str(key: str, value: str) -> None:
-    state_key = _DB_KEY_TO_STATE_KEY.get(key, key)
-    state.mtproxy_config[state_key] = value
+    state.mtproxy_config[key] = value
     await db_exec(
         "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
         "INSERT INTO settings (key, value) VALUES ($1, $2) "

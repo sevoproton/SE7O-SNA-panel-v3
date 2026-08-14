@@ -71,13 +71,13 @@ async def load_all():
             "max_connections": 0, "created_at": now, "active": 1,
             "expires_at": None, "custom_path": "", "custom_sni": "",
             "custom_host": "", "custom_fp": "chrome", "color": "#39ff14",
-            "flag": "", "fragment": "", "transport": "ws",
+            "flag": "", "fragment": "",
         }
         async with state.links_lock:
             state.links[default_uid] = default_link
         await db_exec(
-            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, flag, fragment, transport) VALUES (?,?,?,?,?,1,?,'','','ws')",
-            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, flag, fragment, transport) VALUES ($1,$2,$3,$4,$5,TRUE,$6,'','','ws')",
+            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, flag, fragment) VALUES (?,?,?,?,?,1,?,'','')",
+            "INSERT INTO links (uid, label, limit_bytes, max_connections, created_at, active, expires_at, flag, fragment) VALUES ($1,$2,$3,$4,$5,TRUE,$6,'','')",
             (default_uid, "This Server is Free", 0, 0, now, None),
         )
 
