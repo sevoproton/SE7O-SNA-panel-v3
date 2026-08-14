@@ -592,13 +592,6 @@ example.com"></textarea></div>
         <div class="fg"><label class="fl">SNI</label><input class="fi" id="asni" placeholder="example.com"></div>
         <div class="fg"><label class="fl">Host</label><input class="fi" id="ahost" placeholder="example.com"></div>
         <div class="fg"><label class="fl">Fingerprint</label><input class="fi" id="afp" placeholder="chrome"></div>
-        <div class="fg"><label class="fl" data-en="Transport" data-fa="ترنسپورت">Transport</label>
-          <select class="fs" id="atransport">
-            <option value="ws">WebSocket (ws)</option>
-            <option value="xhttp">XHTTP</option>
-            <option value="tcp">Raw TCP</option>
-          </select>
-        </div>
         <div class="fg"><label class="fl">Fragment</label><input class="fi" id="afrag" placeholder="e.g. 1000-2000"></div>
       </div>
     </div>
@@ -644,13 +637,6 @@ example.com"></textarea></div>
         <div class="fg"><label class="fl">SNI</label><input class="fi" id="esni"></div>
         <div class="fg"><label class="fl">Host</label><input class="fi" id="ehost"></div>
         <div class="fg"><label class="fl">Fingerprint</label><input class="fi" id="efp"></div>
-        <div class="fg"><label class="fl" data-en="Transport" data-fa="ترنسپورت">Transport</label>
-          <select class="fs" id="etransport">
-            <option value="ws">WebSocket (ws)</option>
-            <option value="xhttp">XHTTP</option>
-            <option value="tcp">Raw TCP</option>
-          </select>
-        </div>
         <div class="fg"><label class="fl">Fragment</label><input class="fi" id="efrag"></div>
       </div>
     </div>
@@ -1014,7 +1000,7 @@ function renderLinks(links){
     return`<tr>
       <td><input type="checkbox" value="${l.uuid}" ${check} onchange="toggleSelectUid('${l.uuid}')"></td>
       <td style="font-weight:600">${labelDisplay}</td>
-      <td><span class="tag tag-vless">VLESS</span> <span class="tag" style="opacity:.75">${(l.transport||'ws').toUpperCase()}</span></td>
+      <td><span class="tag tag-vless">VLESS</span></td>
       <td style="white-space:nowrap"><div class="pill"><span class="pill-used">${fmtB(u)}</span><div class="pill-bar"><div class="pill-fill" style="width:${pct}%;background:${col}"></div></div><span>${fmtLim(lim)}</span></div></td>
       <td>${cc}/${mc2||'∞'}</td>
       <td style="color:${ec}">${ex}</td>
@@ -1079,8 +1065,7 @@ async function createLink(){
     label,uuid,limit_value:v,limit_unit:'GB',max_connections:mc,days_valid:days,
     custom_path:$m('ap').value.trim(),custom_sni:$m('asni').value.trim(),
     custom_host:$m('ahost').value.trim(),custom_fp:$m('afp').value.trim(),
-    color:$m('alink-color')?.value||'#39ff14', flag: flagCode, fragment: fragment,
-    transport: $m('atransport')?.value || 'ws'
+    color:$m('alink-color')?.value||'#39ff14', flag: flagCode, fragment: fragment
   };
   try{
     await fetch('/api/links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1092,7 +1077,7 @@ function showEditMo(uid){
   $m('eu').value=uid; $m('euuid').value=l.uuid; $m('en2').value=l.label;
   $m('el').value=l.limit_bytes>0?(l.limit_bytes/1073741824):''; $m('ec').value=l.max_connections||''; $m('ed').value='';
   $m('ep').value=l.custom_path||''; $m('esni').value=l.custom_sni||''; $m('ehost').value=l.custom_host||''; $m('efp').value=l.custom_fp||'chrome';
-  $m('efrag').value=l.fragment||''; if($m('etransport'))$m('etransport').value=l.transport||'ws';
+  $m('efrag').value=l.fragment||'';
   $m('e-color').value=l.color||'#39ff14';
   const flag = l.flag || '';
   $m('flag-code-edit').value = flag;
@@ -1118,8 +1103,7 @@ async function saveEdit(){
     limit_value:v,limit_unit:'GB',max_connections:mc,label:$m('en2').value.trim(),
     custom_path:$m('ep').value.trim(),custom_sni:$m('esni').value.trim(),
     custom_host:$m('ehost').value.trim(),custom_fp:$m('efp').value.trim(),
-    color:$m('e-color').value, flag: flagCode, fragment: fragment,
-    transport: $m('etransport')?.value || 'ws'
+    color:$m('e-color').value, flag: flagCode, fragment: fragment
   };
   if(days)body.days_valid=days;
   try{
@@ -1339,7 +1323,7 @@ if (tgLang === 'fa') {
     $m('tg-lang-hidden').value = 'en';
 }}catch(err){console.error('loadTelegram error:',err);}}
 async function saveTelegramSettings(){const token=$m('tg-token').value.trim(),chat=$m('tg-chat-id').value.trim();const interval=$m('tg-interval').value.trim();const events=Array.from(document.querySelectorAll('.tg-event:checked')).map(cb=>cb.value).join(',');const templates_en=$m('tg-templates-en').value.trim();const templates_fa=$m('tg-templates-fa').value.trim();const tglang=$m('tg-lang-hidden').value;try{await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tg_bot_token:token,tg_chat_id:chat,telegram_interval:interval,telegram_events:events,telegram_templates_en:templates_en,telegram_templates_fa:templates_fa,telegram_lang:tglang})});toast('Saved');}catch{toast('Error',true);}}
-async function testTelegram(){const token=$m('tg-token').value.trim(),chat=$m('tg-chat-id').value.trim();if(!token||!chat){toast('Fill token and chat ID',true);return;}const tglang=$m('tg-lang-hidden').value;try{const res=await fetch('/api/telegram/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tg_bot_token:token,tg_chat_id:chat,lang:tglang})});if(res.ok){toast('Test message sent!');}else{const d=await res.json().catch(()=>({}));toast(d.detail||'Failed to send',true);}}catch{toast('Network error contacting panel',true);}}
+async function testTelegram(){const token=$m('tg-token').value.trim(),chat=$m('tg-chat-id').value.trim();if(!token||!chat){toast('Fill token and chat ID',true);return;}const tglang=$m('tg-lang-hidden').value;const msg = tglang==='fa'?'✅ SE7O-SNA متصل شد':'✅ SE7O-SNA is connected';try{const res=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text:msg})});if(res.ok)toast('Test message sent!');else toast('Failed to send',true);}catch{toast('Error',true);}}
 function toggleTgLang() {
     const toggle = $m('tg-lang-toggle');
     toggle.classList.toggle('on');
