@@ -1,34 +1,14 @@
-# Railway config-as-code.
-# NOTE: secrets (ADMIN_USERNAME, ADMIN_PASSWORD, SECRET_KEY, etc.) are
-# intentionally NOT set here. Set them in Railway's dashboard instead:
-# Project -> Service -> Variables. Committing real secrets into this file
-# means they end up in your GitHub repo's history forever, even if you
-# later remove them.
+[[services]]
+  name = "panel"
 
-[build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+  [services.variables]
+    ADMIN_USERNAME = "se7oadmin"
+    ADMIN_PASSWORD = "Test1234"
+    SECRET_KEY = "se7o-railway-secret-key-2026-randomxyz"
+    MTPROXY_ENABLED = "true"
+    MTPROXY_PORT = "443"
 
-[deploy]
-startCommand = "python main.py"
-restartPolicyType = "off"
-
-
-# Variables that are safe as non-secret defaults (override any of these
-# in the dashboard if you need different values per environment).
-[deploy.variables]
-MTPROXY_ENABLED = "true"
-MTPROXY_PORT = "443"
-XHTTP_ENABLED = "true"
-DB_PATH = "/data/panel.db"
-
-# Required -- set these in the dashboard (Variables tab), not here:
-#   ADMIN_USERNAME
-#   ADMIN_PASSWORD
-#   SECRET_KEY
-#
-# Optional raw-TCP transport (needs its own TCP Proxy in Networking too):
-#   RAW_TCP_ENABLED = "true"
-#   RAW_TCP_PORT = "8080"
-#   RAW_TCP_PUBLIC_HOST = "<given by Railway after adding the TCP Proxy>"
-#   RAW_TCP_PUBLIC_PORT = "<given by Railway after adding the TCP Proxy>"
+  [services.deploy]
+    startCommand = "python main.py"
+    healthcheckPath = "/health"
+    healthcheckTimeout = 100
