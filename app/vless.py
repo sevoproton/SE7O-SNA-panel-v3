@@ -35,51 +35,23 @@ def code_to_flag(code):
 
 
 def generate_vless_link(uid, remark="SE7O", address=None, extra=None):
-    """
-    extra["transport"] selects the wire transport:
-      - "ws" (default)   -> WebSocket over the main HTTPS port (unchanged)
-      - "xhttp"           -> Xray XHTTP/splithttp, stream-up mode, same
-                              HTTPS port as ws (no new port needed)
-      - "tcp"             -> raw VLESS TCP, no TLS/WS/HTTP framing at all;
-                              connects directly to raw_tcp_port and requires
-                              that port to actually be exposed by the host
-                              (see config.py raw_tcp_* settings)
-    """
-    transport = (extra.get("transport") or "ws") if extra else "ws"
-    cache_key = f"{uid}:{remark}:{address}:{transport}:{json.dumps(extra) if extra else ''}"
+    cache_key = f"{uid}:{remark}:{address}:{json.dumps(extra) if extra else ''}"
     cached = state.link_cache.get(cache_key)
     if cached and cached["expires"] > time.time():
         return cached["link"]
 
     domain = get_domain()
     addr = address or domain
+    path = (extra.get("custom_path") or f"/ws/{uid}") if extra else f"/ws/{uid}"
     sni = (extra.get("custom_sni") or domain) if extra else domain
     host = (extra.get("custom_host") or domain) if extra else domain
     fp = (extra.get("custom_fp") or "chrome") if extra else "chrome"
     fragment = extra.get("fragment", "") if extra else ""
 
-    if transport == "tcp":
-        # Plain TCP, no TLS/WS — the raw listener terminates VLESS directly.
-        port = int(settings.raw_tcp_public_port or settings.raw_tcp_port)
-        params = {"encryption": "none", "security": "none", "type": "tcp"}
-        query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
-        safe_remark = quote(remark.encode("utf-8", errors="replace").decode("utf-8"))
-        link = f"vless://{uid}@{format_host_port(addr, port)}?{query}#{safe_remark}"
-        state.link_cache[cache_key] = {"link": link, "expires": time.time() + settings.link_cache_ttl}
-        return link
-
-    if transport == "xhttp":
-        path = (extra.get("custom_path") or f"/xhttp/{uid}") if extra else f"/xhttp/{uid}"
-        params = {
-            "encryption": "none", "security": "tls", "type": "xhttp", "mode": "stream-up",
-            "host": host, "path": path, "sni": sni, "fp": fp, "alpn": "http/1.1",
-        }
-    else:
-        path = (extra.get("custom_path") or f"/ws/{uid}") if extra else f"/ws/{uid}"
-        params = {
-            "encryption": "none", "security": "tls", "type": "ws",
-            "host": host, "path": path, "sni": sni, "fp": fp, "alpn": "http/1.1",
-        }
+    params = {
+        "encryption": "none", "security": "tls", "type": "ws",
+        "host": host, "path": path, "sni": sni, "fp": fp, "alpn": "http/1.1",
+    }
     if fragment:
         params["fragment"] = fragment
 

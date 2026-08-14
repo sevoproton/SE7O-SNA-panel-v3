@@ -35,11 +35,6 @@ async def init_db():
         _pg_pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
         async with _pg_pool.acquire() as conn:
             await conn.execute(SCHEMA_POSTGRES)
-            for col, coltype in LINKS_MIGRATIONS:
-                try:
-                    await conn.execute(f"ALTER TABLE links ADD COLUMN IF NOT EXISTS {col} {coltype}")
-                except Exception:
-                    pass
     else:
         db_path = settings.db_path
         try:
@@ -54,16 +49,6 @@ async def init_db():
         await _db_conn.execute("PRAGMA journal_mode=WAL")
         await _db_conn.executescript(SCHEMA_SQLITE)
         await _db_conn.commit()
-
-        cur = await _db_conn.execute("PRAGMA table_info(links)")
-        existing_cols = {row[1] for row in await cur.fetchall()}
-        for col, coltype in LINKS_MIGRATIONS:
-            if col not in existing_cols:
-                try:
-                    await _db_conn.execute(f"ALTER TABLE links ADD COLUMN {col} {coltype}")
-                    await _db_conn.commit()
-                except Exception:
-                    pass
 
 
 async def close_db():
@@ -113,16 +98,8 @@ LINKS_COLS = (
     "active BOOLEAN DEFAULT TRUE, expires_at TEXT, "
     "custom_path TEXT DEFAULT '', custom_sni TEXT DEFAULT '', "
     "custom_host TEXT DEFAULT '', custom_fp TEXT DEFAULT 'chrome', "
-    "color TEXT DEFAULT '#39ff14', flag TEXT DEFAULT '', fragment TEXT DEFAULT '', "
-    "transport TEXT DEFAULT 'ws'"
+    "color TEXT DEFAULT '#39ff14', flag TEXT DEFAULT '', fragment TEXT DEFAULT ''"
 )
-
-# Columns added after the initial release — applied via ALTER TABLE for
-# databases created before the column existed. (uid TEXT PRIMARY KEY, so a
-# fresh install already gets these via LINKS_COLS / CREATE TABLE.)
-LINKS_MIGRATIONS = [
-    ("transport", "TEXT DEFAULT 'ws'"),
-]
 
 SCHEMA_SQLITE = (
     "CREATE TABLE IF NOT EXISTS links (" + LINKS_COLS + ");"
