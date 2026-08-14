@@ -4,7 +4,7 @@
 
 # SE7O-SNA Panel v3
 
-**A self-hosted subscription panel for VLESS over WebSocket, XHTTP, and raw TCP.**
+**A self-hosted subscription panel for VLESS over WebSocket + TLS.**
 
 Modular Python application · FastAPI · SQLite or PostgreSQL
 
@@ -52,12 +52,6 @@ without granting panel access.
 **Telegram notifications**
 Bilingual (English/Persian) templates for panel logins, expired inbounds, errors, and quota
 warnings, with a live template preview in the dashboard.
-
-**Transports**
-WebSocket (default) and XHTTP (Xray splithttp, stream-up mode) both run on the same HTTPS port —
-no extra port needed. An optional raw-TCP VLESS listener (`type=tcp`, no TLS/WS framing) is
-available on a second port for platforms that support exposing extra TCP ports (see
-[Enable extra transports](#6-enable-extra-transports-optional) below).
 
 **Telegram MTProxy**
 An MTProto proxy (`mtg`) runs as a child process inside the same container. The FakeTLS secret is
@@ -113,16 +107,6 @@ Add these environment variables in the platform dashboard:
 | `MTPROXY_SECRET` | Optional | `ee…` | Pin a specific secret instead of generating one. |
 | `MTPROXY_PUBLIC_HOST` | Optional | `shuttle.proxy.rlwy.net` | Override the public host, for platforms that do not expose it automatically. |
 | `MTPROXY_PUBLIC_PORT` | Optional | `15140` | Override the public port. |
-| `XHTTP_ENABLED` | Optional | `true` | Enable the XHTTP transport, served on the same HTTPS port. Defaults to `true`. |
-| `RAW_TCP_ENABLED` | Optional | `false` | Enable a second, plain `type=tcp` VLESS listener with no TLS/WS framing. Needs its own TCP proxy — see below. |
-| `RAW_TCP_PORT` | Optional | `8080` | Port the raw-TCP listener binds to *inside* the container. |
-| `RAW_TCP_PUBLIC_HOST` | Optional | `shuttle.proxy.rlwy.net` | Public host for the raw-TCP listener, for platforms that don't expose it automatically. |
-| `RAW_TCP_PUBLIC_PORT` | Optional | `15141` | Public port for the raw-TCP listener. |
-
-`ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `SECRET_KEY` are read from the environment on **every**
-startup, not just the first one: if you change one in the platform dashboard and redeploy, it
-overrides whatever is currently stored in the database. Leave a variable unset to keep whatever
-is already stored (or, on a brand-new deployment, the built-in default).
 
 ### 4. Enable the Telegram proxy
 
@@ -144,28 +128,11 @@ warning and a provisional address.
 On platforms that do not publish those variables, set `MTPROXY_PUBLIC_HOST` and
 `MTPROXY_PUBLIC_PORT` yourself.
 
-### 6. Enable extra transports (optional)
-
-XHTTP works out of the box on the same HTTPS port — nothing to configure beyond
-`XHTTP_ENABLED=true` (the default). Generate a link with transport `xhttp` from the dashboard the
-same way you generate a `ws` link.
-
-The raw-TCP transport is a second listener with its own port, so it needs the same kind of TCP
-proxy as MTProxy:
-
-1. Set `RAW_TCP_ENABLED=true` and, if you don't want the default, `RAW_TCP_PORT`.
-2. In **Networking → TCP Proxy**, add a second proxy pointed at that internal port.
-3. Put the public host/port Railway gives you into `RAW_TCP_PUBLIC_HOST` / `RAW_TCP_PUBLIC_PORT`.
-
-Render's standard web service only exposes a single HTTP port, so the raw-TCP transport does not
-work there — leave `RAW_TCP_ENABLED` off on Render.
-
-### 7. Sign in
+### 5. Sign in
 
 Open your deployment URL at `/panel` and log in with `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
-Changing the password from **Settings** afterwards takes effect immediately and persists in the
-database — just don't leave a stale `ADMIN_PASSWORD` env var set to the old value, since that
-will overwrite your in-panel change back on the next redeploy.
+Both credentials can be changed later from **Settings**; changes persist in the database and
+take precedence over the environment variables.
 
 ---
 
@@ -191,8 +158,6 @@ of SQLite.
 | `app/routes/` | HTTP and WebSocket endpoints, grouped by domain. |
 | `app/services/` | Background loops: traffic, keep-alive, Telegram, link expiry. |
 | `app/services/mtproxy.py` | MTProto proxy supervisor, secret handling, link building. |
-| `app/services/raw_tcp.py` | Raw-TCP VLESS listener (`type=tcp`), independent of the main HTTP port. |
-| `app/routes/tunnel.py` | WebSocket and XHTTP VLESS tunnel endpoints — the core proxy engine. |
 | `app/templates/panel_html.py` | The embedded single-page admin frontend. |
 | `app/templates/user_html.py` | The public per-user subscription page. |
 | `app/static/img/` | Optimized logo and favicon assets. |

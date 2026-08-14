@@ -28,7 +28,6 @@ from app.services.keepalive import simple_loop, advanced_loop
 from app.services.telegram import report_loop
 from app.services.links import auto_disable_expired
 from app.services import mtproxy as mtproxy_service
-from app.services import raw_tcp as raw_tcp_service
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -80,74 +79,24 @@ async def lifespan(app: FastAPI):
         elif key == "log_enabled" and value:
             state.logging_enabled = value == "1"
 
-    # --- SECRET_KEY / ADMIN_USERNAME / ADMIN_PASSWORD ---
-    # These three used to be seeded into the DB only on the very first boot
-    # (guarded by "if not state.X"), so once a value existed in the DB,
-    # changing the env var on the host and redeploying had NO EFFECT — the
-    # stale DB value silently won forever. We now treat an *explicitly set*
-    # env var (present in os.environ, not just the dataclass default) as an
-    # operator override that always takes precedence over the DB, exactly
-    # like the MTProxy settings already do. If the env var is absent, we
-    # fall back to whatever is already persisted (or generate one on first
-    # run), so an operator who removes the env var doesn't get logged out.
-    import secrets as _secrets
-    import bcrypt as _bcrypt
-
-    env_secret_key = os.environ.get("SECRET_KEY", "").strip()
-    if env_secret_key and env_secret_key != state.secret_key:
-        state.secret_key = env_secret_key
+    if not state.secret_key:
+        import secrets
+        state.secret_key = settings.secret_key
         await db_exec(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('jwt_secret_key', ?)",
             "INSERT INTO settings (key, value) VALUES ('jwt_secret_key', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
             (state.secret_key,),
         )
-        logger.info("SECRET_KEY overridden from environment")
-    elif not state.secret_key:
-        state.secret_key = _secrets.token_urlsafe(32)
-        await db_exec(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('jwt_secret_key', ?)",
-            "INSERT INTO settings (key, value) VALUES ('jwt_secret_key', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
-            (state.secret_key,),
-        )
-
-    env_admin_username = os.environ.get("ADMIN_USERNAME", "").strip()
-    if env_admin_username and env_admin_username != state.admin_username:
-        state.admin_username = env_admin_username
-        await db_exec(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_username', ?)",
-            "INSERT INTO settings (key, value) VALUES ('admin_username', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
-            (state.admin_username,),
-        )
-        logger.info("ADMIN_USERNAME overridden from environment")
-    elif not state.admin_username:
+    if not state.admin_username:
         state.admin_username = settings.admin_username
         await db_exec(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_username', ?)",
             "INSERT INTO settings (key, value) VALUES ('admin_username', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
             (state.admin_username,),
         )
-
-    env_admin_password = os.environ.get("ADMIN_PASSWORD", "").strip()
-    if env_admin_password:
-        # Only re-hash + write to the DB if the env password actually
-        # differs from what's stored, so we don't churn a new bcrypt hash
-        # (and a new column write) on every single restart.
-        matches_current = False
-        if state.admin_password_hash:
-            try:
-                matches_current = _bcrypt.checkpw(env_admin_password.encode("utf-8"), state.admin_password_hash.encode("utf-8"))
-            except Exception:
-                matches_current = False
-        if not matches_current:
-            state.admin_password_hash = _bcrypt.hashpw(env_admin_password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
-            await db_exec(
-                "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_password_hash', ?)",
-                "INSERT INTO settings (key, value) VALUES ('admin_password_hash', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
-                (state.admin_password_hash,),
-            )
-            logger.info("ADMIN_PASSWORD overridden from environment")
-    elif not state.admin_password_hash:
-        state.admin_password_hash = _bcrypt.hashpw(settings.admin_password.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+    if not state.admin_password_hash:
+        import bcrypt
+        state.admin_password_hash = bcrypt.hashpw(settings.admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         await db_exec(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('admin_password_hash', ?)",
             "INSERT INTO settings (key, value) VALUES ('admin_password_hash', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
@@ -163,12 +112,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(cleanup_link_cache_loop())
 
     await mtproxy_service.start()
-    await raw_tcp_service.start()
 
     logger.info("SE7O-SNA Panel v3.0 started")
     yield
     await mtproxy_service.stop()
-    await raw_tcp_service.stop()
     await close_db()
 
 
@@ -176,14 +123,9 @@ def create_app() -> FastAPI:
     app = FastAPI(title="SE7O-SNA Panel v2", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    # NOTE: allow_origins=["*"] together with allow_credentials=True is
-    # rejected by every modern browser (CORS spec forbids a wildcard origin
-    # on credentialed requests), so it silently broke any cross-origin use
-    # of the cookie-authenticated API. The panel's own frontend is served
-    # same-origin and never needed CORS credentials in the first place.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"], allow_credentials=False,
+        allow_origins=["*"], allow_credentials=True,
         allow_methods=["*"], allow_headers=["*"],
     )
 
